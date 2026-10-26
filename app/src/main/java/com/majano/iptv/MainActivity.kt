@@ -1,6 +1,13 @@
 package com.majano.iptv
 
 import android.app.UiModeManager
+import android.net.Uri
+import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
 import android.content.Context
 import android.content.res.Configuration
 import android.os.Bundle
@@ -9,6 +16,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -87,6 +96,8 @@ private fun IPTVApp(isTvInitially: Boolean, player: ExoPlayer) {
     var password by remember { mutableStateOf("") }
     var playlistUrl by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Agrega los datos de tu proveedor para cargar tu catálogo.") }
+    val scope = rememberCoroutineScope()
+    var connecting by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf("Configura tu servicio") }
     var testStream by remember { mutableStateOf("") }
     val favorites = remember { mutableStateListOf<String>() }
@@ -125,8 +136,19 @@ private fun IPTVApp(isTvInitially: Boolean, player: ExoPlayer) {
                     isTv, server, { server = it }, username, { username = it }, password, { password = it },
                     playlistUrl, { playlistUrl = it }, status,
                     onSave = {
-                        status = if (server.isBlank() && playlistUrl.isBlank()) "Introduce el servidor Xtream o la URL M3U." else
-                            "Datos recibidos en esta sesión. La conexión real al proveedor y el almacenamiento seguro están pendientes de implementar."
+                        if (connecting) { /* Evitar solicitudes duplicadas */ }
+                        else if (playlistUrl.isNotBlank() && server.isBlank()) {
+                            status = "La validación de listas M3U está pendiente. Para probar la conexión usa Xtream."
+                        } else if (server.isBlank() || username.isBlank() || password.isBlank()) {
+                            status = "Introduce servidor, usuario y contraseña de Xtream."
+                        } else {
+                            connecting = true
+                            status = "Comprobando conexión con el proveedor…"
+                            scope.launch {
+                                status = validateXtream(server.trim(), username.trim(), password)
+                                connecting = false
+                            }
+                        }
                     },
                     onTest = { url ->
                         testStream = url
@@ -209,7 +231,7 @@ private fun SettingsPanel(
     status: String, onSave: () -> Unit, onTest: (String) -> Unit
 ) {
     var sampleStream by remember { mutableStateOf("") }
-    Column(Modifier.fillMaxSize().background(Panel, RoundedCornerShape(16.dp)).padding(18.dp)) {
+    Column(Modifier.fillMaxSize().background(Panel, RoundedCornerShape(16.dp)).verticalScroll(rememberScrollState()).padding(18.dp)) {
         Text("Conectar proveedor IPTV", color = MainText, fontSize = if (isTv) 22.sp else 17.sp, fontWeight = FontWeight.Bold)
         Text("Usa únicamente los datos de un servicio al que tengas acceso.", color = Muted, fontSize = 12.sp)
         Spacer(Modifier.height(14.dp))
@@ -218,7 +240,7 @@ private fun SettingsPanel(
         OutlinedTextField(value = password, onValueChange = onPassword, label = { Text("Contraseña") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = playlistUrl, onValueChange = onPlaylistUrl, label = { Text("URL de lista M3U (alternativa)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onSave) { Text("Guardar datos") }
+            Button(onClick = onSave, modifier = Modifier.fillMaxWidth()) { Text("Conectar proveedor") }
         }
         Divider(Modifier.padding(vertical = 12.dp), color = Muted.copy(alpha = 0.25f))
         Text("Prueba de reproducción (desarrollo)", color = MainText, fontWeight = FontWeight.SemiBold)
@@ -227,5 +249,32 @@ private fun SettingsPanel(
         Spacer(Modifier.height(8.dp))
         Text(status, color = Muted, fontSize = 12.sp)
         Text("Pendiente para la siguiente fase: autenticación Xtream/M3U completa, carga de categorías, persistencia cifrada, favoritos persistentes, búsqueda, temporadas/capítulos reales y selector de audio/subtítulos.", color = Muted, fontSize = 11.sp)
+    }
+}
+
+
+// Valida credenciales Xtream sin registrar ni mostrar la contraseña.
+// Esta comprobación no sincroniza todavía canales, películas ni series.
+private suspend fun validateXtream(server: String, username: String, password: String): String = withContext(Dispatchers.IO) {
+    try {
+        val base = server.trimEnd('/')
+        if (!base.startsWith("https://") && !base.startsWith("http://")) {
+            return@withContext "La URL debe comenzar por https:// o http://."
+        }
+        val address = "$base/player_api.php?username=${Uri.encode(username)}&password=${Uri.encode(password)}"
+        val connection = URL(address).openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 10000
+            connection.readTimeout = 12000
+            connection.requestMethod = "GET"
+            connection.instanceFollowRedirects = false
+            if (connection.responseCode != 200) return@withContext "El servidor respondió HTTP ${connection.responseCode}. Revisa la dirección y el servicio."
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            val auth = JSONObject(response).optJSONObject("user_info")?.optInt("auth", 0) ?: 0
+            if (auth == 1) "Conexión Xtream verificada. La descarga del catálogo aún está pendiente."
+            else "El servidor no autorizó las credenciales."
+        } finally { connection.disconnect() }
+    } catch (e: Exception) {
+        "No se pudo conectar. Comprueba la URL, la red y el certificado HTTPS."
     }
 }

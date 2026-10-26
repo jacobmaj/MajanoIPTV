@@ -35,3 +35,7 @@ Media3/ExoPlayer puede reproducir formatos compatibles con el dispositivo y el s
 ## Seguridad
 
 No subas credenciales reales a GitHub ni las escribas en código. Esta base no guarda todavía las credenciales de forma persistente. Antes de lanzar una versión pública hay que implementar almacenamiento seguro y revisar la política de privacidad.
+
+
+## Icono de la aplicación
+Se agregó el icono Majano IPTV para el launcher de Android, con recursos mipmap y soporte de icono adaptativo en Android 8 o posterior.
