@@ -240,7 +240,17 @@ private suspend fun loadXtream(server:String,user:String,pass:String):Pair<List<
         val base=server.trim().trimEnd('/')
         if(!base.startsWith("http://")&&!base.startsWith("https://")) return@withContext emptyList<MediaEntry>() to "Error: la URL debe empezar por http:// o https://."
         val auth=fetchJson("$base/player_api.php?username=${Uri.encode(user)}&password=${Uri.encode(pass)}")
-        if(auth.optJSONObject("user_info")?.optInt("auth",0)!=1) return@withContext emptyList<MediaEntry>() to "Error: el proveedor rechazó las credenciales."
+        val userInfo = auth.optJSONObject("user_info")
+        // Some Xtream-compatible providers omit auth or return it as a string.
+        // Only report rejected credentials when the response explicitly says auth=0.
+        val authValue = userInfo?.opt("auth")?.toString()
+        if (userInfo == null) {
+            val apiMessage = auth.optString("message", auth.optString("error", ""))
+            return@withContext emptyList<MediaEntry>() to if (apiMessage.isNotBlank()) "Error del proveedor: $apiMessage" else "Respuesta no reconocida del servidor IPTV. Comprueba la URL del servidor."
+        }
+        if (authValue == "0" || authValue.equals("false", ignoreCase = true)) {
+            return@withContext emptyList<MediaEntry>() to "El servidor indica que las credenciales no son válidas o que la cuenta no está autorizada."
+        }
         val out=mutableListOf<MediaEntry>()
         fun addArray(action:String,kind:String,extDefault:String) {
             val arr=fetchArray("$base/player_api.php?username=${Uri.encode(user)}&password=${Uri.encode(pass)}&action=$action")
@@ -263,7 +273,15 @@ private suspend fun loadXtream(server:String,user:String,pass:String):Pair<List<
         addArray("get_series","series","")
         if(out.isEmpty()) emptyList<MediaEntry>() to "Conexión correcta, pero el proveedor devolvió un catálogo vacío."
         else out to "Conectado. Se cargaron ${out.count{it.kind=="live"}} canales, ${out.count{it.kind=="movie"}} películas y ${out.count{it.kind=="series"}} series."
-    } catch(e:Exception) { emptyList<MediaEntry>() to "Error al conectar: revisa la URL, conexión y datos del proveedor." }
+    } catch(e:Exception) {
+        val detail = when (e) {
+            is java.net.SocketTimeoutException -> "El servidor tardó demasiado en responder."
+            is java.net.UnknownHostException -> "No se pudo encontrar el servidor; revisa la URL o el DNS."
+            is java.net.ConnectException -> "No se pudo conectar al servidor o puerto indicado."
+            else -> "No se pudo leer la respuesta del servidor (${e.javaClass.simpleName})."
+        }
+        emptyList<MediaEntry>() to "Error al conectar: $detail"
+    }
 }
 private fun fetchJson(address:String):JSONObject {
     val c=URL(address).openConnection() as HttpURLConnection
