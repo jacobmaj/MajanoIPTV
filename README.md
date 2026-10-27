@@ -1,20 +1,23 @@
-# Majano IPTV — versión pulida (base funcional)
+# Majano IPTV (v0.4.0)
 
-Incluye:
-- Icono Android y flujo GitHub Actions.
-- Interfaz adaptable: navegación lateral para pantallas amplias y navegación horizontal para móvil.
-- Configuración desplazable, botón Conectar y campos Xtream/M3U.
-- Validación Xtream y carga inicial de canales, películas y series desde la API del proveedor.
-- Lectura de listas M3U como lista de reproducción.
-- Búsqueda en el catálogo y favoritos guardados localmente.
-- Reproductor Media3 para URLs reproducibles por el dispositivo.
+Reproductor IPTV para Android / Android TV (Kotlin + Jetpack Compose + Media3).
+Escribes **link del servidor, usuario y contraseña** y la app carga el catálogo de tu proveedor.
 
-## Limitaciones que siguen pendientes
-- Los episodios y temporadas de series todavía necesitan una pantalla de detalle y llamadas a `get_series_info`; el listado de series se carga, pero no se puede reproducir una serie desde su fila.
-- Los favoritos se guardan localmente; la contraseña de proveedor se guarda en preferencias privadas de la app, no cifrada. Antes de distribuir públicamente, debe migrarse a almacenamiento cifrado.
-- El formato, codecs, 4K, subtítulos y pistas de audio dependen del stream, proveedor y dispositivo.
-- La lista M3U se presenta como lista de TV en vivo; clasificación avanzada de películas/series por M3U no está implementada.
-- No se ha podido ejecutar una compilación Android real en este entorno. Verifica el resultado en GitHub Actions y comparte el error si falla.
+## Qué incluye
+- **Login simple**: acepta `http://servidor:puerto`, o el link completo `get.php?username=...`. Xtream Codes con alternativa M3U. Errores claros (contraseña, cuenta vencida, servidor, certificado...).
+- **Sesión guardada** cifrada (Android Keystore) y entrada automática.
+- **TV en vivo** (categorías | canales | vista previa), **Películas** y **Series** (banner + filas de pósters), detalle con sinopsis, temporadas y episodios.
+- **Continuar viendo**: recuerda película, temporada, episodio y minuto. Al volver a una serie queda en la temporada donde ibas.
+- **Siguiente episodio** automático y sugerencia en los créditos; **Saltar intro** (ajustable en Cuenta).
+- **Audio y subtítulos**: botón CC para desactivar subtítulos y cambiar de audio. Decodificadores FFmpeg para AC3/EAC3/DTS.
+- **Control remoto**: OK = pausa, ◀ ▶ = ±10 s, ▲ ▼ = canal, ▼ = audio/subtítulos, Atrás = salir. CH+/CH- cambian de canal.
+- Favoritos, búsqueda y pantalla completa.
 
-## GitHub
-Sube el contenido del ZIP a tu repositorio existente, conservando `.github/workflows/build-apk.yml`. Ejecuta Actions y descarga el artefacto `majano-iptv-debug-apk`.
+## Compilar
+GitHub Actions (`.github/workflows/build-apk.yml`) genera el APK de depuración: pestaña **Actions** → última ejecución → **Artifacts**.
+Requiere Gradle 8.11.1 y Java 17 (ya configurados en el workflow).
+
+## Notas
+- Se permite tráfico `http` porque casi todos los proveedores IPTV no usan https.
+- Los subtítulos quemados en la imagen del video no se pueden quitar.
+- Usa únicamente datos de un servicio al que tengas acceso.
